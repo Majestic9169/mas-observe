@@ -1,0 +1,24 @@
+{
+  "model": "ollama/qwen2.5-16k",
+  "small_model": "ollama/qwen2.5-16k",
+  "share": "disabled",
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (local)",
+      "options": { "baseURL": "http://localhost:11434/v1" },
+      "models": { "qwen2.5-16k": { "name": "Qwen2.5 16k" } }
+    }
+  },
+  "agent": {
+    "triage": {
+      "description": "Support ticket triage worker",
+      "mode": "primary",
+      "model": "ollama/qwen2.5-16k",
+      "temperature": 0,
+      "prompt": "You triage support tickets. Use ONLY the read and write tools. Never delegate or start subagents. Read the ticket, then write the result file directly, then reply with one sentence.",
+      "tools": { "subagent": false, "task": false, "bash": false, "webfetch": false }
+    }
+  }
+}

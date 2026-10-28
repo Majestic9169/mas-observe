@@ -1,0 +1,3 @@
+FROM qwen2.5:latest
+PARAMETER num_ctx 32768
+PARAMETER temperature 0
