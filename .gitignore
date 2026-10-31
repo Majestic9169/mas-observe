@@ -1,2 +1,5 @@
-*/**.db*
+**.db*
 agentsight
+runs/
+__pycache__/
+slo.json.tmp

@@ -1,0 +1,14 @@
+{
+ "slo_ms": 13333.049112499997,
+ "baseline_p95_ms": [
+  8691.371231,
+  8891.857632,
+  9082.869362
+ ],
+ "baseline_runs": [
+  "runs/baseline_s1_20261031-151847",
+  "runs/baseline_s1_20261031-152013",
+  "runs/baseline_s1_20261031-152141"
+ ],
+ "rule": "1.5 x mean of baseline p95"
+}

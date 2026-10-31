@@ -1,0 +1,1 @@
+{"name":"context_bloat","tickets":20,"concurrency":2,"faults":[{"id":"f1","type":"context_bloat","target":"worker","start_s":15,"duration_s":40,"params":{"tokens":4000}}]}

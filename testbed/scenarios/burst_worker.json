@@ -1,0 +1,1 @@
+{"name":"burst_worker","tickets":20,"concurrency":2,"faults":[{"id":"f1","type":"burst","target":"worker","start_s":15,"duration_s":40,"params":{"k":3,"num_predict":200}}]}

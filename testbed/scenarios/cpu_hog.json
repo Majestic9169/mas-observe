@@ -1,0 +1,1 @@
+{"name":"cpu_hog","tickets":20,"concurrency":2,"faults":[{"id":"f1","type":"cpu_hog","target":"worker","start_s":15,"duration_s":40,"params":{"hogs":4}}]}

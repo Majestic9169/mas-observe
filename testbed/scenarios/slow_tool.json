@@ -1,0 +1,1 @@
+{"name":"slow_tool","tickets":20,"concurrency":2,"faults":[{"id":"f1","type":"slow_tool","target":"worker","start_s":15,"duration_s":40,"params":{"delay_ms":8000}}]}

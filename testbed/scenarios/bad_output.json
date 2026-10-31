@@ -1,0 +1,1 @@
+{"name":"bad_output","tickets":20,"concurrency":2,"faults":[{"id":"f1","type":"bad_output","target":"worker","start_s":15,"duration_s":40,"params":{"p":0.5}}]}

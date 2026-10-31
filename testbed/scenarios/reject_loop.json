@@ -1,0 +1,1 @@
+{"name":"reject_loop","tickets":20,"concurrency":2,"faults":[{"id":"f1","type":"reject_loop","target":"critic","start_s":15,"duration_s":40,"params":{"r":1}}]}
