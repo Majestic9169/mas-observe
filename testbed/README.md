@@ -34,10 +34,33 @@ fixed 2 major build issues in agentsight
 
 ### Recording with agentsight
 
+You need tracefs mounted
+
+```bash
+sudo mount -t tracefs nodev /sys/kernel/tracing
+```
+
 in one terminal
 
 ```bash
 sudo env "HOME=$HOME" ./agentsight record -c python
+# Trace Monitoring
+# ============================================================
+# ============================================================
+# Starting flexible trace monitoring with 3 runners and 1 global analyzers...
+# Press Ctrl+C to stop
+# Starting web server on http://127.0.0.1:7395/
+# [2026-10-28T17:33:05Z WARN  agentsight_capture_core::runners::common] [Process] STDERR: libbpf: elf: failed to find symbol 'readline' in '/usr/bin/bash'
+# ^C
+# 
+# Received shutdown signal, shutting down...
+# [HTTPFilter Global Metrics] No metrics available
+# [SSLFilter Global Metrics] No metrics available
+# ✓ Shutdown requested. Stopping monitoring.
+# 
+# Recorded 2m to /home/user/git-repos/btp/testbed/agentsight-20261028-230304.db
+# 63 API calls · 0 tokens · 2 execs · 11 files · 1 network endpoints
+# Run: agentsight report
 ```
 
 sudo needed for ebpf, "HOME=??" needed because it writes to logs and stuff in your normal home and not root wala home
@@ -70,6 +93,14 @@ OLLAMA_URL=https://127.0.0.1:11436 OLLAMA_CA=certs/cert.pem python agents.py --r
 ```
 
 tested against 5 types of tickets that it must classify
+
+view results with 
+
+```bash
+./agentsight report prompts 
+./agentsight report prompts --json
+./agentsight report audit --json
+```
 
 ## Test 3
 
