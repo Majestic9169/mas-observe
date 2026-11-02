@@ -222,36 +222,53 @@ Head sampling decides up front, tail sampling decides after the trace completes,
 
 ### 5.1 Failure model
 
-**Unit of observation (RQ1).** Existing tools pick a unit from one layer: an LLM call (prompt level), a syscall or process (kernel level), or a request (network level). We propose a **decision span**: one reasoning step (an LLM call, with its prompt and response), the tool invocations that response produced (file, process and network actions), and the downstream effects those actions had, including delayed ones and ones on shared resources. A span has an identity (here, derived from content hashes and process lineage rather than an injected ID), a start and end, and typed links to other spans. In the testbed, one worker `llm_start`/`llm_end` pair, the `write_file` `tool_call` it triggers, and the response message that carries the written result onward to the critic form one decision span, which the ground-truth log lets us enumerate exactly. The testbed has no delayed shared-state link yet (§6.4), so the delayed part of the span is untested.
+**Unit of observation (RQ1).** Existing tools pick a unit from one layer: an LLM call (prompt level), a syscall or process (kernel level), or a request (network level). We propose a **decision span**: one reasoning step that encompasses all of these. A span has an identity, a start and end, and typed links to other spans.
 
-A failure is a triple: **root cause**, **propagation channel**, **symptom**. The symptom is an SLO violation or an incorrect outcome, and the root cause is a decision span (or an injected fault acting on one).
+**Delayed and indirect effects are linked to the span.** A span is bounded: it closes when its last tool invocation returns, so that it can be stored and queried. An effect that outlives it, such as a file another agent reads minutes later, can not be a member of the span but is reachable from it. 
 
-- **Root causes:** model failures (hallucination, loops, truncation), resource (CPU, inference queue, context size), tool or state (slow or wrong tool, stale file), message (malformed or lost), coordination (a reviewer that rejects, a retry storm).
+1. *Residue.* When a span finishes, it records the durable things it left behind: for each write, the path and content hash; for each message, the body hash; for each shared-resource use, the server and queue position. This is a small set, recorded cheaply by default
+2. *Late binding.* When a later span reads a path, receives a body, or is served by a queue, the observer matches it against the residue. A match creates a typed edge back to the earlier span (shared-state, message or contention). The delay is an attribute of the edge.
+3. *Retention.* Residue must be kept as long as a late effect could still arrive, so its lifetime (and storage cost) is a tunable bound, and an effect arriving after it is lost. This is the same trade-off as retroactive sampling and is part of RQ2's overhead question.
+
+So the span stays small while the causal graph grows. Attribution then follows edges: a wrong decision in span B is blamed on span A through the shared-state edge, with the delay and the match type as evidence.
+
+This does not recover every effect. Three cases remain open: (i) state that never touches an observable artifact (in-memory state, an external service), (ii) content that is transformed between write and read so that hashes no longer match, (iii) and several writers to one path, where the observer must choose one (we propose the last writer before the read). 
+
+A failure is a triple: **root cause**, **propagation channel**, **symptom**. The symptom is an SLO violation or an incorrect outcome, and the root cause is a decision span (or an injected fault acting on one), the propagation channel is the means by which the root cause manifested as the SLO violation
+
+- **Root causes:** model failures (hallucination, loops, truncation), resource (CPU, inference queue, context size), tool or state (slow or wrong tool, stale file), message (malformed or lost), coordination (a reviewer that rejects, a retry storm). 
 - **Channels:** message (A sends to B), contention (A and B share a resource, no message between them), shared state (files, databases), delayed or persistent (effects that appear later), and semantic (the content of an answer influences a later decision).
+
+These are not final and require iteration
 
 ### 5.2 What the framework claims
 
-Two things. **Provenance**: the happens-before relation between observed events. **Attribution**: how much of a symptom to blame on each upstream event along the edges. Edges are labelled by how they were established: **exact** (hash matched at both endpoints, or propagated ID), **inferred** (timing, ordering, queue position), and **semantic** (content containment).
+Two things. 
+
+- **Provenance**: the happens-before relation between observed events. 
+- **Attribution**: how much of a symptom to blame on each upstream event along the edges. Edges are labelled by how they were established: **exact** (hash matched at both endpoints, or propagated ID), **inferred** (timing, ordering, queue position), and **semantic** (content containment).
 
 ### 5.3 Counterfactuals (RQ4)
 
-We take position (a) for RQ4: counterfactual runs in the testbed are the **grading oracle**, not a feature of the framework. Because runs are seeded, rerunning the same seed without a fault yields the fault-free outcome, so a fault's true effect on each ticket is a difference of two runs, and we can score a framework's blame against it. Replaying one non-deterministic decision inside a live system, or estimating a what-if on a captured graph, is a different and harder claim (§7.6) and is left to future work.
+We take position (a) for RQ4: counterfactual runs in the testbed are the **grading oracle**, not a feature of the framework. Because runs are seeded, rerunning the same seed without a fault yields the fault-free outcome, so a fault's true effect on each ticket is a difference of two runs, and we can score a framework's blame against it. Replaying one non-deterministic decision inside a live system, or estimating a what-if on a captured graph, is a different and harder claim and is left to future work.
 
 ### 5.4 Promise matrix
 
-The matrix lists, for each testbed fault (§6.4), its channel and the claim the framework is designed to make. These are design targets. The rightmost columns are filled with measured results once the framework exists (§8).
+The matrix lists, for each testbed fault (§6.4), its channel and the claim the framework is designed to make. These are design targets. The rightmost columns are filled with measured results once the framework exists. More are to be added as work progresses.
+
 
 | fault | root-cause class | channel | detect | localize | explain |
 |---|---|---|---|---|---|
-| `burst` (worker/critic) | resource | contention | yes | yes (blame the in-service requests) | yes |
-| `context_bloat` | resource | contention | yes | yes | partial (prompt size visible, intent not) |
-| `slow_tool` | tool | local delay | yes | yes (gap inside one agent) | partial |
-| `reject_loop` | coordination | message | yes (retries) | yes | partial (reason is a forced override, not visible) |
-| `bad_output` | model | semantic | partial | partial | out of scope without a judge of correctness |
-| `cpu_hog` | resource | contention (host CPU) | out of scope on this setup | out of scope | out of scope |
-| (not built) shared-state corruption | tool/state | shared state | design only | design only | design only |
+| `burst` (worker/critic) | resource | contention | yes | yes  | yes |
+| `context_bloat` | resource | contention | yes | yes | partial  |
+| `slow_tool` | tool | local delay | yes | yes  | partial |
+| `reject_loop` | coordination | message | yes  | yes | partial  |
+| `bad_output` | model | semantic | partial | partial | out of scope|
+| `cpu_hog` | resource | contention | out of scope on this setup | out of scope | out of scope |
+| shared-state corruption | tool/state | shared state | design only | design only | design only |
 
-Out-of-scope cells: `bad_output` detection needs a ground-truth notion of correctness, which an external observer lacks. `cpu_hog` had no measurable effect on this setup (§6.4), so there is nothing to detect. Both are reported, not hidden.
+
+Out-of-scope cells: `bad_output` detection needs a ground-truth notion of correctness, which an external observer lacks. `cpu_hog` had no measurable effect on this setup given how agents are IO bound, so there is nothing to detect. 
 
 ### 5.5 Timing and staleness
 
