@@ -186,23 +186,19 @@ None of these provides a causal record across agents or a ground-truth evaluatio
 
 ### 3.1 Tracing basics
 
-Dapper introduced spans, trace IDs and sampling. Its central requirement is context propagation: every hop must carry the trace ID. In multi-agent LLM systems that requirement often fails, since agents are third-party code and LLM calls are black boxes, which is why we start from inferring links rather than assuming propagation.
+*Dapper* (Google 2010)[^4] introduced spans, trace IDs and sampling. Its central requirement is context propagation: every hop must carry the trace ID. In multi-agent LLM systems that requirement often fails, since agents are third-party code and LLM calls are black boxes. We can instead (i) instrument an open-source agent harness, (ii) propagate IDs on our lightweight python testbed (iii) try to infer edges
 
 ### 3.2 Causality and time
 
-Happened-before (Lamport) orders events by causal dependence, not wall-clock time. Across hosts, clocks drift and skew, so per-host timestamps cannot be compared directly. Our testbed sidesteps this by using one `CLOCK_MONOTONIC` on a single machine, and §7.9 proposes injected clock offsets to test the design under skew.
+Happened-before (Lamport) orders events by causal dependence, not wall-clock time. Across hosts, clocks drift and skew, so per-host timestamps cannot be compared directly. Our prototype testbed sidesteps this by using one `CLOCK_MONOTONIC` on a single machine. We should eventually expand to a multiserver distributed testbed, perhaps orchestrated by Kubernetes.
 
 ### 3.3 Zero-instrumentation tracing
 
-eBPF can observe process events and TLS plaintext (by hooking the TLS library's read and write calls) without modifying applications. DeepFlow (SIGCOMM 2023) is a network-centric tracing system that uses predefined kernel hooks for automatic instrumentation of microservices, with no application code changes, and reports production use at several companies. It infers links from network signals, which is the model we adapt, with the addition that agent messages have content that can be matched. Hooking TLS reads and writes only works when the application's own traffic is visible as plaintext at the library, which is why every hop in our testbed uses real HTTPS over localhost sockets.
+eBPF can observe process events and TLS plaintext (by hooking the TLS library's read and write calls) without modifying applications. *DeepFlow* (SIGCOMM 2023) is a network-centric tracing system that uses predefined kernel hooks for automatic instrumentation of microservices, with no application code changes, and reports production use at several companies. It infers links from network signals, which is the model we adapt, with the addition that agent messages have content that can be matched. 
 
 ### 3.4 Sampling and collection strategies
 
-Head sampling decides up front, tail sampling decides after the trace completes, and retroactive sampling (Hindsight, NSDI 2023) records all trace data locally and reports it only after a trigger fires, like a dash-cam that persists footage after a jolt. After a trigger, a coordinator contacts the machines that served the request and follows breadcrumbs left on each. Hindsight is compatible with OpenTelemetry instrumentation and reports nanosecond-level overhead to generate trace data. Our adaptive design (§7.5, §7.7) follows the retroactive model, but triggers on SLO burn and on what the consuming agent needs (RQ3).
-
-### 3.5 Root-cause analysis
-
-A causal-inference RCA benchmark study motivates not relying on statistical causal discovery alone for service graphs. In our setting the graph is not unknown: it is reconstructed from message matching, and statistics are used only for attribution along edges. [Reading status and gaps: author to complete.]
+Head sampling decides up front, tail sampling decides after the trace completes, and retroactive sampling (*Hindsight*, NSDI 2023) records all trace data locally and reports it only after a trigger fires, like a dash-cam that persists footage after a jolt. After a trigger, a coordinator contacts the machines that served the request and follows breadcrumbs left on each. Hindsight is compatible with OpenTelemetry instrumentation and reports nanosecond-level overhead to generate trace data. Our adaptive design follows the retroactive model, but triggers on SLO burn and on what the consuming agent needs (RQ3).
 
 ## 4. Related work: agent observability
 
@@ -516,3 +512,4 @@ Citations are by name in the text. Entries below were checked against their arXi
 [^1]: Khan, Fareed. *Agentic Architectures: A Library of 35 Production-Grade Agentic AI Patterns.*
 [^2]: https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro
 [^3]: https://tyk.io/learning-center/a2a-protocol-architecture-and-technical-specification/
+[^4]: https://www.youtube.com/watch?v=CnqPaYnMedU (this is for my future reference)
