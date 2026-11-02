@@ -1,5 +1,5 @@
 ---
-title: "MAS Observe"
+title: "MAS Observe: Causal Observability for Distributed AI Agent Workloads"
 author: "Tegan Jain"
 date: "November 2026"
 papersize: a4
@@ -142,7 +142,7 @@ Small local models are cheaper and keep data on-premises, but tool calling is le
 
 ### 2.6 Agents in infrastructure operations
 
-Network and cloud operations are adopting agents for triage, configuration and remediation. These loops act on shared infrastructure, so a wrong or slow action propagates, which is why operators need to know both what an agent did and what it caused.
+Network and cloud operations are adopting agents for triage, configuration and remediation; for example, Flow-of-Action constrains a multi-agent root-cause-analysis system with standard operating procedures and reports 64.01% localisation accuracy against 35.50% for a ReAct baseline[^6]. These loops act on shared infrastructure, so a wrong or slow action propagates, which is why operators need to know both what an agent did and what it caused.
 
 ### 2.7 AI observing AI
 
@@ -184,11 +184,11 @@ None of these provides a causal record across agents or a ground-truth evaluatio
 
 ### 3.1 Tracing basics
 
-*Dapper* (Google 2010)[^4] introduced spans, trace IDs and sampling. Its central requirement is context propagation: every hop must carry the trace ID. In multi-agent LLM systems that requirement often fails, since agents are third-party code and LLM calls are black boxes. We can instead (i) instrument an open-source agent harness, (ii) propagate IDs on our lightweight python testbed (iii) try to infer edges
+*Dapper* (Google, 2010)[^4] introduced spans, trace IDs and sampling; in its worst-case overhead test it used under 0.3% of one core, and its first production version sampled about one trace in 1024. Its central requirement is context propagation: every hop must carry the trace ID. In multi-agent LLM systems that requirement often fails, since agents are third-party code and LLM calls are black boxes. We can instead (i) instrument an open-source agent harness, (ii) propagate IDs on our lightweight python testbed (iii) try to infer edges
 
 ### 3.2 Causality and time
 
-Happened-before (Lamport) orders events by causal dependence, not wall-clock time. Across hosts, clocks drift and skew, so per-host timestamps cannot be compared directly. Our prototype testbed sidesteps this by using one `CLOCK_MONOTONIC` on a single machine. We should eventually expand to a multiserver distributed testbed, perhaps orchestrated by Kubernetes.
+Happened-before (Lamport, 1978)[^5] orders events by causal dependence, not wall-clock time. Across hosts, clocks drift and skew, so per-host timestamps cannot be compared directly. Our prototype testbed sidesteps this by using one `CLOCK_MONOTONIC` on a single machine. We should eventually expand to a multiserver distributed testbed, perhaps orchestrated by Kubernetes. A related caution from microservice root-cause analysis: a benchmark study of causal-inference methods found their running time grows substantially with system size and metric count[^7], which limits how much of the causal graph can be inferred online.
 
 ### 3.3 Zero-instrumentation tracing
 
@@ -460,36 +460,40 @@ Besides these this proposed framework is very large and involves lots of moving 
 - HTTP/2, gRPC, streaming and brokers and other tools (MCP); learned adaptive policies; semantic edges.
 - Implementing the framework and evaluating
 
-## 12. AI use disclosure
+## 12. AI disclosure
 
-Parts of this work were produced with the help of an AI coding agent, namely:
+Parts of this work were produced with the help of generative AI, namely:
 
-- **Testbed code.** The agent wrote much of the Python in `testbed/` from a specification written by me. I set the design constraints and reviewed the results. 
-- **Report text.** The agent aided with presenting this report. 
+- **Testbed code.** The LLM wrote much of the Python in `testbed/` from a specification written by me. I set the design constraints and reviewed the results. 
+- **Report text.** The LLM aided with presenting this report. 
 
 All the actual content, the research questions, numbers, related work, core proposed framework etc are all by the authors. The fault model, testbed, and framework are original ideas inspired by the recent research work in this field and the gaps found.
 
-
 ## References
 
-- **AgentSight**: Zheng, Hu, Yu, Quinn. *AgentSight: System-Level Observability for AI Agents Using eBPF.* arXiv 2508.02736.
 - **AgentLoupe**: *AgentLoupe: Kernel-Resident Semantic Causal Labels for AI Agent Observability.* arXiv 2610.23233.
-- **llmmas-otel**: *Observability and Fault Injection for LLM-Based Multi-Agent Systems in Software Engineering.* arXiv 2608.24271.
-- **Who&When**: *Which Agent Causes Task Failures and When? On Automated Failure Attribution of LLM Multi-Agent Systems.* ICML 2025, arXiv 2505.00212.
-- **MAST**: *Why Do Multi-Agent LLM Systems Fail?* NeurIPS 2025, arXiv 2503.13657.
-- **Hindsight**: Zhang et al. *The Benefit of Hindsight: Tracing Edge-Cases in Distributed Systems.* NSDI 2023, arXiv 2202.05769.
-- **Autellix**: Luo et al. *Autellix: An Efficient Serving Engine for LLM Agents as General Programs.* arXiv 2502.13965.
-- **Parrot**: Lin et al. *Parrot: Efficient Serving of LLM-Based Applications with Semantic Variable.* OSDI 2024.
-- **DeepFlow**: Shen et al. *Network-Centric Distributed Tracing with DeepFlow: Troubleshooting Your Microservices in Zero Code.* SIGCOMM 2023.
-- **LLM agents for RCA**: *RCAgent: Cloud Root Cause Analysis by Autonomous Agents with Tool-Augmented Large Language Models.* arXiv 2310.16340; *Exploring LLM-based Agents for Root Cause Analysis.* arXiv 2403.04123.
-- **AgentCgroup**: Zheng, Fan, Fu, Yang, Zhang, Quinn. *AgentCgroup: Understanding and Controlling OS Resources of AI Agents.* arXiv 2602.09345 (AgenticOS 2026 at ASPLOS).
-- **Branch context**: Wang, Zheng. *Fork, Explore, Commit: OS Primitives for Agentic Exploration.* arXiv 2602.08199 (AgenticOS 2026 at ASPLOS).
-- **DMI**: Wang, Li, Chen. *Rethinking OS Interfaces for LLM Agents.* AgenticOS 2026 at ASPLOS.
 - **AgentPProf**: Zheng et al. *AgentPProf: Semantic Profiler for AI Agents.* 2nd AgenticOS workshop, SOSP 2026. (The workshop schedule lists it as "AgentProf".)
 - **Concord**: Liu, Fang, Qian. *When Agent Context Goes Stale: Incoherence in Volatile Agent Context.* 2nd AgenticOS workshop, SOSP 2026.
+- **llmmas-otel**: *Observability and Fault Injection for LLM-Based Multi-Agent Systems in Software Engineering.* arXiv 2608.24271.
+- **DMI**: Wang, Li, Chen. *Rethinking OS Interfaces for LLM Agents.* AgenticOS 2026 at ASPLOS.
 - **Agentic performance management**: Chen, Huang, Levy. *Towards Agentic Performance Management* (extended abstract). AgenticOS 2026 at ASPLOS.
 - **Grimlock**: Wu et al. *Grimlock: Guarding High-Agency Systems with eBPF and Attested Channels.* AgenticOS 2026 at ASPLOS. 
-- **Not yet checked**: Dapper; Lamport (happened-before); MCP; A2A; the causal-inference RCA benchmark study; Flow-of-Action (cited from a search summary only).
+- **AgentCgroup**: Zheng, Fan, Fu, Yang, Zhang, Quinn. *AgentCgroup: Understanding and Controlling OS Resources of AI Agents.* arXiv 2602.09345 (AgenticOS 2026 at ASPLOS).
+- **Branch context**: Wang, Zheng. *Fork, Explore, Commit: OS Primitives for Agentic Exploration.* arXiv 2602.08199 (AgenticOS 2026 at ASPLOS).
+- **AgentSight**: Zheng, Hu, Yu, Quinn. *AgentSight: System-Level Observability for AI Agents Using eBPF.* arXiv 2508.02736.
+- **Who&When**: *Which Agent Causes Task Failures and When? On Automated Failure Attribution of LLM Multi-Agent Systems.* ICML 2025, arXiv 2505.00212.
+- **A2A**: *Agent2Agent (A2A) Protocol*, originally developed by Google and donated to the Linux Foundation (the project site now reports a move to the Agentic AI Foundation). https://a2a-protocol.org/latest/
+- **MAST**: *Why Do Multi-Agent LLM Systems Fail?* NeurIPS 2025, arXiv 2503.13657.
+- **Autellix**: Luo et al. *Autellix: An Efficient Serving Engine for LLM Agents as General Programs.* arXiv 2502.13965.
+- **Flow-of-Action**: Pei, Wang et al. *Flow-of-Action: SOP Enhanced LLM-Based Multi-Agent System for Root Cause Analysis.* arXiv 2502.08224. 
+- **MCP**: Model Context Protocol, open-source specification and documentation. https://modelcontextprotocol.io/
+- **Causal RCA study**: Pham, Ha, Zhang. *Root Cause Analysis for Microservice System based on Causal Inference: How Far Are We?* ASE 2024, arXiv 2408.13729. 
+- **Parrot**: Lin et al. *Parrot: Efficient Serving of LLM-Based Applications with Semantic Variable.* OSDI 2024.
+- **LLM agents for RCA**: *RCAgent: Cloud Root Cause Analysis by Autonomous Agents with Tool-Augmented Large Language Models.* arXiv 2310.16340; *Exploring LLM-based Agents for Root Cause Analysis.* arXiv 2403.04123.
+- **DeepFlow**: Shen et al. *Network-Centric Distributed Tracing with DeepFlow: Troubleshooting Your Microservices in Zero Code.* SIGCOMM 2023.
+- **Hindsight**: Zhang et al. *The Benefit of Hindsight: Tracing Edge-Cases in Distributed Systems.* NSDI 2023, arXiv 2202.05769.
+- **Dapper**: Sigelman et al. *Dapper, a Large-Scale Distributed Systems Tracing Infrastructure.* Google Technical Report, 2010
+- **Lamport**: Lamport. *Time, Clocks, and the Ordering of Events in a Distributed System.* Communications of the ACM 21(7):558-565, 1978
 
 ## Appendix
 
@@ -529,6 +533,9 @@ Inside `execute` the model mostly failed. The most common results were `Unknown 
 ---
 
 [^1]: Khan, Fareed. *Agentic Architectures: A Library of 35 Production-Grade Agentic AI Patterns.*
-[^2]: https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro
-[^3]: https://tyk.io/learning-center/a2a-protocol-architecture-and-technical-specification/
-[^4]: https://www.youtube.com/watch?v=CnqPaYnMedU (this is for my future reference)
+[^2]: Model Context Protocol documentation, https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro
+[^3]: *Agent2Agent (A2A) Protocol*, https://a2a-protocol.org/latest/.
+[^4]: Sigelman et al., *Dapper, a Large-Scale Distributed Systems Tracing Infrastructure*, Google Technical Report, 2010. https://research.google/pubs/pub36356/
+[^5]: Lamport, *Time, Clocks, and the Ordering of Events in a Distributed System*, Communications of the ACM 21(7):558-565, 1978.
+[^6]: Pei, Wang et al., *Flow-of-Action: SOP Enhanced LLM-Based Multi-Agent System for Root Cause Analysis*, WWW 2025 Companion, arXiv 2502.08224.
+[^7]: Pham, Ha, Zhang, *Root Cause Analysis for Microservice System based on Causal Inference: How Far Are We?*, ASE 2024, arXiv 2408.13729.
