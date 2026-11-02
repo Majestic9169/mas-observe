@@ -6,7 +6,7 @@ papersize: a4
 margin:
   x: 2.5cm
   y: 2.5cm
-fontsize: 10pt
+fontsize: 11pt
 mainfont: "New Computer Modern"
 ---
 
@@ -138,9 +138,7 @@ A shared server is also a contention point: with one decode slot, requests queue
 
 ### 2.5 Local and small models
 
-Small local models are cheaper and keep data on-premises, but tool calling is less reliable and context windows are limited. Our own data: a single-agent ticket classifier on `qwen2.5` with schema-constrained JSON actions classified 20 of 20 tickets correctly, while the same task through the off-the-shelf `opencode` harness succeeded in under 5% of attempts. The opencode requests we captured carry an 18,005-character system prompt plus 8,826 characters of tool schemas (about 6.7k tokens by the rule), against a 16k-context model variant. 
-
-That size alone does not explain the failure, since it fits within the context window; a possible cause could be that Ollama's OpenAI-compatible endpoint ignored the larger context setting. Unable to get opencode to work so far, we therefore use a minimal harness with schema-constrained output.
+Small local models are cheaper and keep data on-premises, but tool calling is less reliable and context windows are limited. Our own data: a single-agent ticket classifier on `qwen2.5` with schema-constrained JSON actions classified 20 of 20 tickets correctly, while the same task through the off-the-shelf `opencode` harness almost never completed (Appendix A). The wire log shows two causes, neither of which is the context window: opencode's "code mode" hides `read` and `write` behind a single `execute` tool that takes JavaScript, and the model repeatedly called tools that do not exist inside it (Appendix A.2); and a separate title-generation request was rejected with HTTP 400 on every attempt. The system prompt and tool schemas are about 27k characters (roughly 6.7k tokens), which fits the 16k and 32k model variants used. We therefore use a minimal harness with schema-constrained output.
 
 ### 2.6 Agents in infrastructure operations
 
@@ -299,7 +297,7 @@ Every inter-agent and agent-to-Ollama hop is HTTPS over a real localhost socket 
 
 ### 6.3 Model and context-window choices
 
-We use `qwen2.5` (4.7 GB, fully on GPU) with temperature 0, an 8192-token context (upto 32KB), a capped output length and a per-request seed derived from the run seed, ticket, attempt and step. Off-the-shelf agent harnesses did not work with a model of this size: the `opencode` runs captured on the wire used about 27k characters of system prompt and tool schemas per request and succeeded in under 5% of attempts. A minimal python harness with schema-constrained actions classified every ticket correctly (20 of 20 labels, in the single-agent version and in every multi-agent run we measured).
+We use `qwen2.5` (4.7 GB, fully on GPU) with temperature 0, an 8192-token context (upto 32KB), a capped output length and a per-request seed derived from the run seed, ticket, attempt and step. Off-the-shelf agent harnesses did not work with a model of this size: `opencode` produced a valid result file in only a small fraction of runs (Appendix A), because the model could not drive its tool interface. A minimal python harness with schema-constrained actions classified every ticket correctly (20 of 20 labels, in the single-agent version and in every multi-agent run we measured).
 
 ### 6.4 Fault injection
 
@@ -443,7 +441,7 @@ Always-on versus always-cheap versus adaptive, including consumer-driven escalat
 
 ### 9.2 Local-model gap
 
-From reading the source: the provider list covers hosted providers; the LLM-path list has no Ollama native `/api/chat`; the token fields do not include Ollama's `prompt_eval_count` and `eval_count`; and Ollama streams newline-delimited JSON rather than server-sent events. Ollama however claims an OpenAI compatible endpoint that hasn't been tested yet.
+From reading the source: the provider list covers hosted providers; the LLM-path list has no Ollama native `/api/chat`; the token fields do not include Ollama's `prompt_eval_count` and `eval_count`; and Ollama streams newline-delimited JSON rather than server-sent events. Ollama however claims an OpenAI compatible endpoint that did not seem to be up to the mark
 
 ## 10. Discussion and threats to validity
 
@@ -461,6 +459,16 @@ Besides these this proposed framework is very large and involves lots of moving 
 - A shared-state fault and other missing channels and faults.
 - HTTP/2, gRPC, streaming and brokers and other tools (MCP); learned adaptive policies; semantic edges.
 - Implementing the framework and evaluating
+
+## 12. AI use disclosure
+
+Parts of this work were produced with the help of an AI coding agent, namely:
+
+- **Testbed code.** The agent wrote much of the Python in `testbed/` from a specification written by me. I set the design constraints and reviewed the results. 
+- **Report text.** The agent aided with presenting this report. 
+
+All the actual content, the research questions, numbers, related work, core proposed framework etc are all by the authors. The fault model, testbed, and framework are original ideas inspired by the recent research work in this field and the gaps found.
+
 
 ## References
 
@@ -485,7 +493,38 @@ Besides these this proposed framework is very large and involves lots of moving 
 
 ## Appendix
 
-- **D. opencode failure transcripts.** `testbed/logs/wire.jsonl`.
+### A. opencode on a local model: captured wire log
+
+**Setup.** `opencode` was pointed at Ollama's OpenAI-compatible endpoint (`/v1/chat/completions`) through a logging proxy, with `qwen2.5-16k` and later `qwen2.5-32k`. The task was one ticket: "Read `sandbox/ticket_1.txt` and write `sandbox/result_1.json` with category and urgency". The log has 643 records (317 chat requests, 7 `/api/show`, 319 responses) spanning about 3 hours of wall time; all counts below are computed from it. The count of task attempts is approximate (65 distinct conversations, 70 title requests), because attempts are reconstructed from message prefixes.
+
+**A.1 What each request carries.**
+
+
+| request type | count | system prompt | tools | result |
+|---|---|---|---|---|
+| Task (agent loop step) | 177 | 18,005 chars | 9 (8,826 chars of schemas) | 56 on `qwen2.5-16k`, 121 on `qwen2.5-32k` |
+| Title generation, with `reasoning_effort` | 70 | 2,119 chars | none | HTTP 400 every time |
+| Title generation, without it | 70 | 2,119 chars | none | HTTP 200 (retry) |
+
+
+The 400 body is `"qwen2.5-16k" does not support thinking` (25 times) or the same for `qwen2.5-32k` (45 times). It is harmless to the task but doubles the title traffic. Task requests ask for up to 32,000 output tokens (`max_completion_tokens`). It is surprising that Title Generation requires thinking models.
+
+**A.2 Why tasks fail.** The system prompt switches opencode into a "code mode": the model is told that `read`, `write`, `glob` and the other tools "cannot be called directly" and must be invoked from JavaScript passed to a single `execute` tool, as `await tools.<namespace>.<tool>(...)`. Of the tool calls the model issued across all captured conversations:
+
+
+| tool called | count |
+|---|---|
+| `execute` (JavaScript) | 354 |
+| `read` (direct) | 107 |
+| `write` (direct) | 11 |
+| `skill`, `websearch` | 5, 3 |
+
+
+Inside `execute` the model mostly failed. The most common results were `Unknown tool 'read'. Did you mean tools.opencode.read_mcp_resource?` (10), `Unknown tool 'opencode.read'` (7), JavaScript syntax errors such as `Unterminated string constant` (3), and `Unable to read MCP resource sandbox:ticket_1.txt: MCP server not found` (3). The longest conversation made 27 steps and never wrote the file, alternating between the same two wrong tool names.
+
+**A.3 What the model did get right.** It read the ticket correctly and chose the right label (`billing`/`high` or `bug`/`high`) when it reached a write. Only 11 of the 65 reconstructed conversations reached a `write` call, and in 5 of those the file content was a Python-style dict with single quotes (`{'category': 'billing', ...}`), which is not valid JSON.
+
+**A.4 Reading.** The requests are about 27k characters (roughly 6.7k tokens), which fits both model variants. The failure is a mismatch between a 4.7 GB model and an agent harness whose tool interface requires it to write correct JavaScript against an API it cannot see. 
 
 ---
 
