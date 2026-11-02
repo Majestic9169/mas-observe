@@ -3,3 +3,9 @@ agentsight
 runs/
 __pycache__/
 slo.json.tmp
+report/front/*.aux
+report/front/*.log
+report/front/*.out
+report/front/*.toc
+report/front/front.pdf
+report/report_full.pdf
