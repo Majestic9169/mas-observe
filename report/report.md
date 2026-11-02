@@ -299,22 +299,24 @@ Every inter-agent and agent-to-Ollama hop is HTTPS over a real localhost socket 
 
 ### 6.3 Model and context-window choices
 
-We use `qwen2.5` (4.8 GB, fully on GPU) with temperature 0, an 8192-token context, a capped output length and a per-request seed derived from the run seed, ticket, attempt and step. Off-the-shelf agent harnesses did not work with a model of this size (§2.5): the `opencode` runs captured on the wire used about 27k characters of system prompt and tool schemas per request and succeeded in under 5% of attempts. A minimal harness with schema-constrained actions classified every ticket correctly (20 of 20 labels, in the single-agent version and in every multi-agent run we measured).
+We use `qwen2.5` (4.7 GB, fully on GPU) with temperature 0, an 8192-token context (upto 32KB), a capped output length and a per-request seed derived from the run seed, ticket, attempt and step. Off-the-shelf agent harnesses did not work with a model of this size: the `opencode` runs captured on the wire used about 27k characters of system prompt and tool schemas per request and succeeded in under 5% of attempts. A minimal python harness with schema-constrained actions classified every ticket correctly (20 of 20 labels, in the single-agent version and in every multi-agent run we measured).
 
 ### 6.4 Fault injection
 
 Faults are listed in a scenario file with a target agent, a start time and duration relative to a shared start `t0`, and parameters. Each agent reads the file and activates its faults by the clock; there is no control channel.
 
+
 | group | fault | target | mechanism | parameters used |
-|---|---|---|---|---|
+| ---|---|---|---|---|
 | contention | `burst` | worker or critic | before each handled request, fire K extra junk LLM calls that queue in Ollama | K=3, 200 tokens |
 | contention | `context_bloat` | worker | pad every LLM prompt with P tokens of filler | P=4000 |
 | local delay | `slow_tool` | worker | `read_file(policy.txt)` sleeps D ms | D=8000 |
-| local delay | `cpu_hog` (optional) | any agent | the runner spawns H busy loops pinned to the target's CPU | H=4 |
+| local delay | `cpu_hog` | any agent | the runner spawns H busy loops pinned to the target's CPU | H=4 |
 | behavioural | `reject_loop` | critic | force `reject` for the first R attempts of each ticket | R=1 |
-| behavioural | `bad_output` (optional) | worker | write a wrong category on attempt 0 with probability p | p=0.5 |
+| behavioural | `bad_output` | worker | write a wrong category on attempt 0 with probability p | p=0.5 |
 
-Compared with llmmas-otel's boundary faults (LLM, tool, agent-to-agent), this adds resource contention at a shared inference server and a host-CPU fault. A shared-state fault (for example a corrupted or stale `policy.txt`) is not built yet and is the clearest gap against the failure model of §5.
+
+Compared with llmmas-otel's boundary faults (LLM, tool, agent-to-agent), this adds resource contention at a shared inference server and a host-CPU fault. A shared-state fault (for example a corrupted or stale `policy.txt`) is not built yet and is the clearest gap against the failure model of §5. Shaky network faults are also not implemented yet
 
 Measured effect (seed 1, 20 tickets, concurrency 2, fault active from 15 s to 55 s), compared with three fault-free baselines:
 
@@ -327,22 +329,21 @@ Measured effect (seed 1, 20 tickets, concurrency 2, fault active from 15 s to 55
 | `reject_loop` | 15.7 s | 7 | |
 | `slow_tool` | 14.8 s | 2 | |
 | `bad_output` | 15.3 s | 5 | |
-| `cpu_hog` | 9.0 s | 2 | no effect: agents are I/O-bound and the model runs on the GPU |
+| `cpu_hog` | 9.0 s | 2 | no effect |
 
-Each required fault changes either p95 or the retry count by at least 15 times the baseline p95 spread, or, for retries, from a baseline spread of zero. The in-window per-ticket figures rest on 4–12 tickets and are noisy, so we compare whole-run p95. The optional `cpu_hog` produced no effect, and we report it as a null result.
 
 ### 6.5 Ground-truth log
 
-An application-level side channel, `ground_truth.jsonl`, written by every process. It is not visible on the wire: no ground-truth IDs travel in headers or bodies, so the observer must infer links. (An optional flag adds a W3C `traceparent` header for an ablation only.) Every event has the run, role, process id, and both a monotonic and a wall timestamp.
+An application-level side channel, `ground_truth.jsonl`, written by every process. It is not visible on the wire: no ground-truth IDs travel in headers or bodies, so the observer must infer links. (An optional flag adds a `traceparent` header for instrumented propogation) Every event has the run, role, process id, and both a monotonic and a wall timestamp.
 
 - **Messages:** the sender mints a `msg_id`; the receiver logs only the SHA-256 of the body, so edges are joined by hash. Bodies contain ticket and attempt, so they are unique.
 - **LLM calls:** purpose (`work`, `fault_burst`, `fault_bloat`), prompt hash, client time, and Ollama's own timing fields.
 - **Tool calls, task start/end, and per-ticket SLO records** with the label and the actual result.
 - **Fault events:** every event caused by an injected fault (extra calls, sleeps, forced rejects, padding) carries that fault's id. This is the attribution ground truth.
 
-A validator checks that every task has a start and end, every send has a matching receive by hash, every file write has a tool call, and every fault window is opened and closed. It passes on every run reported here.
+A validator checks that every task has a start and end, every send has a matching receive by hash, every file write has a tool call, and every fault window is opened and closed.
 
-One finding matters for the design. In the Ollama version used (0.40.11), `total_duration` already includes time spent queued in the scheduler, so the obvious queue-wait estimate (client time minus server time) measures only about 5 ms of client and TLS overhead. The real queue wait is the server's total minus its load, prompt-evaluation and generation time; we log it as `ollama_queue_ms`. Because these timing fields appear in the response body, an observer that sees TLS plaintext can in principle recover the same quantity. Across 100 overlapping request pairs from one baseline run, Ollama served requests strictly in arrival order (no service-order inversions), which supports the FIFO assumption in §7.3 on this setup.
+One finding matters for the design. In the Ollama v0.40.11, `total_duration` already includes time spent queued in the scheduler, so the obvious queue-wait estimate (client time minus server time) measures only about 5 ms of client and TLS overhead. The real queue wait is the server's total minus its load, prompt-evaluation and generation time; we log it as `ollama_queue_ms`. Because these timing fields appear in the response body, an observer that sees TLS plaintext can in principle recover the same quantity. Across 100 overlapping request pairs from one baseline run, Ollama served requests strictly in arrival order (no service-order inversions), which supports the FIFO assumption in §7.3 on this setup.
 
 ### 6.6 SLO definition and reproducibility
 
@@ -354,7 +355,6 @@ One finding matters for the design. In the Ollama version used (0.40.11), `total
 
 ## 7. Observability framework design
 
-*This section is a proposal. None of it is implemented yet.*
 
 ### 7.1 Overview and layers
 
@@ -362,23 +362,25 @@ Seven layers: (1) capture, (2) identity and clocks, (3) edge builders, (4) the c
 
 ### 7.2 Capture
 
-TLS-plaintext hooks (an `sslsniff`-style probe on the TLS library's read and write) and process probes (exec, fork, file open, connect). Each captured record carries process id, timestamps, direction and the plaintext chunk. We expect truncation of large bodies and loss under load, and the design must record when data was dropped so that missing edges can be told apart from absent causality.
+TLS-plaintext hooks (an `sslsniff`-style probe on the TLS library's read and write) and `process` probes (exec, fork, file open, connect). Each captured record carries process id, timestamps, direction and the plaintext chunk. We expect truncation of large bodies and loss under load, and the design must record when data was dropped so that missing edges can be told apart from absent causality.
+
+These have been both been implemented by AgentSight already
 
 ### 7.3 Identity and linking
 
 A linking ladder, from weakest to strongest assumption:
 
 1. **Infer by default.** A request body seen leaving agent A and arriving at agent B hashes identically. This matches hops without any ID, which is the **exact** edge type (the testbed's hash-joined ground truth is exactly what grades it).
-2. **Propagated ID if present.** If a `traceparent` header is on the wire, use it. The testbed's ablation flag tests how much this helps.
+2. **Propagated ID if present.** If a `traceparent` header is on the wire, use it. The testbed's flag will test how much this helps.
 3. **Kernel labels within a host.** Process lineage links a process to its own LLM calls and file events.
 
-Cross-node hops use the plaintext hash at both ends. **Semantic** hops (one agent's answer reappears inside a later prompt) use content containment, which is weaker and is labelled as such. [measure: containment precision and recall, TBD]
+Cross-node hops use the plaintext hash at both ends. **Semantic** hops (one agent's answer reappears inside a later prompt) use content containment, which is weaker and is labelled as such. 
 
-**Contention edges.** For a shared inference server, we propose that a request delayed by queueing is linked to the requests that were in service while it waited. With one slot and FIFO service (supported by §6.5), these are exactly the requests ahead of it, so blame can be split by the service time each consumed. The queue wait itself is read from the timing fields in the response plaintext.
+**Contention edges.** For a shared inference server, we propose that a request delayed by queueing is linked to the requests that were in service while it waited. With one slot and FIFO service (supported by §6.5), these are exactly the requests ahead of it, so blame can be split by the service time each consumed. The queue wait itself is read from the timing fields in the response plaintext. This extra linkage may perhaps skew our graph and our implementation of it depends on if we want to cater to queueing faults.
 
 ### 7.4 The causal DAG
 
-Nodes are decision spans (§5.1) and the events inside them: LLM calls, messages, and file or process events. Edges are typed (message, contention, shared state, delayed, semantic) and labelled (exact, inferred, semantic). It is a DAG, not a tree: a worker's call can be delayed by a critic's call and by the planner's earlier retry at once. Every event carries a causal id and a machine id so that cross-node merging does not rely on clocks.
+Nodes are decision spans and the events inside them: LLM calls, messages, and file or process events. Edges are typed (message, contention, shared state, delayed, semantic) and labelled (exact, inferred, semantic). It is a DAG, not a tree: a worker's call can be delayed by a critic's call and by the planner's earlier retry at once. Every event carries a causal id and a machine id so that cross-node merging does not rely on clocks.
 
 ### 7.5 Storage and retroactive collection
 
@@ -386,19 +388,21 @@ Record cheaply always (metadata, hashes, timing) and collect fully (plaintext bo
 
 ### 7.6 Replay (RQ4)
 
-What can be replayed: the seeded testbed, because ticket order, fault schedule and per-ticket outputs repeat for the same seed, with temperature 0 and a per-request seed. Replaying a decision then means rerunning the seed and changing one thing (a fault on or off, or a different action forced at one step), which answers a counterfactual by observation, not by estimation. What cannot be replayed: free-form LLM non-determinism on other setups (a different hardware or server version can change a "deterministic" output), and external side effects. What the captured data must therefore contain for a real replay is the full prompt and response of the decision (available only after escalation, §7.5), the tool results it saw, and the model and sampling parameters. Replay inside a live system is future work; the claim here is limited to the testbed oracle of §5.3.
+What can be replayed: the seeded testbed, because ticket order, fault schedule and per-ticket outputs repeat for the same seed, with temperature 0 and a per-request seed. Replaying a decision then means rerunning the seed and changing one thing (a fault on or off, or a different action forced at one step), which answers a counterfactual by observation, not by estimation. 
+
+What cannot be replayed: free-form LLM non-determinism on other setups (a different hardware or server version can change a "deterministic" output), and external side effects. What the captured data must therefore contain for a real replay is the full prompt and response of the decision (available only after escalation), the tool results it saw, and the model and sampling parameters. Replay inside a live system is currently out of scope.
 
 ### 7.7 Adaptive telemetry (RQ3)
 
-RQ3 asks for collection co-designed with what the consuming agent needs. We propose tiers of capture detail and triggers that move between them: for example, metadata only; metadata plus plaintext hashes; full plaintext and process events for one subtree. Two kinds of trigger move the tier: the system's (SLO burn rate, errors) and the consumer's (the observer agent states what it must decide, such as "was this retry caused by the critic or by the queue?", and collection is raised only for the spans that question touches). The overhead-versus-accuracy knob is the trigger threshold, and the cost counted includes the observer's own tokens and queue load (§2.7). [curve: TBD, §8.7]
+RQ3 asks for collection co-designed with what the consuming agent needs. We propose tiers of capture detail and triggers that move between them: for example, metadata only; metadata plus plaintext hashes; full plaintext and process events for one subtree. Two kinds of trigger move the tier: the system's (SLO burn rate, errors) and the consumer's (the observer agent states what it must decide, such as "was this retry caused by the critic or by the queue?", and collection is raised only for the spans that question touches). The overhead-versus-accuracy knob is the trigger threshold, and the cost counted includes the observer's own tokens and queue load. 
 
 ### 7.8 The observer LLM (RQ3)
 
-The observer is a local, small model, for the same cost, data-locality and privacy reasons as §1.1 and §2.7. It is shown a selected subgraph, not raw events: the path from the violating ticket back to candidate causes, with typed edges and per-edge timing. This matters because raw capture is noisy; in earlier AgentSight traces, a single `requests` call touched dozens of files, all attributed to the LLM call. [measure: events per LLM call and observer input tokens, TBD] The context budget is fixed in advance, and the prompt lists causes in a fixed structure so that answers can be scored against the fault ids. Captured text is passed as quoted data and never as instructions (§2.7), and the observer's ranking is never the only evidence: each blamed edge carries the deterministic reason it was built.
+The observer is a local, small model, for the cost, data-locality and privacy reasons. It is shown a selected subgraph with pre-established causal relationships, not raw events: the path from the violating ticket back to candidate causes, with typed edges and per-edge timing. This matters because raw capture is noisy; in earlier AgentSight traces, a single `requests` call touched dozens of files, all attributed to the LLM call. The context budget is fixed in advance, and the prompt lists causes in a fixed structure so that answers can be scored against the fault ids. Captured text is passed as quoted data and never as instructions, and the observer's ranking is never the only evidence: each blamed edge carries the deterministic reason it was built.
 
 ### 7.9 Emulating a distributed deployment
 
-Network namespaces or containers on one machine stand in for nodes, and clock offsets are injected per node to test the design under skew. On a real cluster, link latency, clock drift and partial capture are worse than anything emulated here; that is a stated limit.
+Network namespaces or containers on one machine stand in for nodes, and clock offsets can be injected per node to test the design under skew. On a real cluster, link latency, clock drift and partial capture are worse than anything emulated here. Those can we emulated with some larger-scale distributed testbed across various containers orchestrated by Kubernetes.
 
 ## 8. Evaluation
 
@@ -408,69 +412,57 @@ Network namespaces or containers on one machine stand in for nodes, and clock of
 
 - **Baselines**: random blame; the AgentSight correlator; request-level critical path (blame the slowest span).
 - **Metrics**: edge precision and recall per edge type; top-1 and top-3 root-cause accuracy against the fault ids in the ground truth; overhead; the noise floor from §6.6.
-- **Oracle**: fault-tagged events and the paired fault-off run (§5.3).
+- **Oracle**: fault-tagged events and the paired fault-off run
 
-### 8.2 AgentSight on our testbed
+### 8.2 AgentSight/AgentLoupe Evaluation on our testbed
 
-Run AgentSight against the testbed, bridge its output to the ground truth, count mismatches, and report correlator precision on real traces. Synthetic-data numbers are not cited as results. **TBD.**
+Run AgentSight against the testbed, bridge its output to the ground truth, count mismatches, and report correlator precision on real traces. These papers lack validation and ground-truth evaluation and currently only weakly supported by demonstrated case-studies. We should evaluate them properly before continuing to rely on their mechanisms for our framework.
 
 ### 8.3 Edge recovery and the decision span (RQ1/RQ2)
 
-Edge precision and recall per type against the hash-joined message edges and the fault-tagged contention edges, and how often a reconstructed decision span matches the span enumerated from the ground truth. **TBD.**
+Edge precision and recall per type against the hash-joined message edges and the fault-tagged contention edges, and how often a reconstructed decision span matches the span enumerated from the ground truth. 
 
 ### 8.4 Attribution against fault-on/fault-off ground truth (RQ2/RQ4)
 
-For each fault in §6.4 and each seed, top-1 and top-3 accuracy of blamed cause, compared with the three baselines and with the paired fault-off rerun. **TBD.** The testbed's measured effect sizes (§6.4) bound what is detectable: `cpu_hog` has none on this setup.
+For each fault and each seed, top-1 and top-3 accuracy of blamed cause, compared with the three baselines and with the paired fault-off rerun. The testbed's measured effect sizes bound what is detectable: 
 
 ### 8.5 Overhead (RQ2/RQ3)
 
-Time and CPU, plus tokens and context size (neither AgentSight nor AgentLoupe reports tokens), over several runs with variance and not only means. **TBD.**
-
-### 8.6 Observer input size and quality (RQ3)
-
-Observer input tokens against events per call, the effect of subgraph selection on explanation quality, and the observer's own load on the shared inference server (its effect on the SLOs it explains). **TBD.**
+Time and CPU, plus tokens and context size (neither AgentSight nor AgentLoupe reports tokens), over several runs Observer input tokens against events per call, the effect of subgraph selection on explanation quality, and the observer's own load on the shared inference server (its effect on the SLOs it explains). 
 
 ### 8.7 Adaptive collection (RQ2/RQ3)
 
-Always-on versus always-cheap versus adaptive, including consumer-driven escalation: cost, including observer tokens, against attribution accuracy. **TBD.**
+Always-on versus always-cheap versus adaptive, including consumer-driven escalation: cost, including observer tokens, against attribution accuracy. 
 
 ## 9. Engineering findings on AgentSight and local-model support
 
 ### 9.1 Build and portability issues
 
-- Clang inlining pushed a probe past the 512-byte BPF stack limit; fixed with `__noinline`. An issue was raised upstream.
-- The probe linked against a hardcoded `readline` symbol in `/usr/bin/bash`. On this distribution, readline is a shared library, so the symbol is not in the bash binary and the probe prints `failed to find symbol 'readline'`.
+- Clang 23.13 inlining pushed a probe past the 512-byte BPF stack limit; fixed with `__noinline`. An issue and PR were raised upstream.
+- The probe linked against a hardcoded `readline` symbol in `/usr/bin/bash`. On this distribution (Artix Linux 7.2.11), readline is a shared library, so the symbol is not in the bash binary and the probe prints `failed to find symbol 'readline'`. Modifications were made to the source to get it working locally
 
 ### 9.2 Local-model gap
 
-From reading the source: the provider list covers hosted providers; the LLM-path list has no Ollama native `/api/chat`; the token fields do not include Ollama's `prompt_eval_count` and `eval_count`; and Ollama streams newline-delimited JSON rather than server-sent events [to verify streaming]. Before claiming "no support", check whether Ollama's OpenAI-compatible `/v1` endpoint already works.
-
-### 9.3 Proposed contribution
-
-An upstream pull request adding native Ollama support and token fields. Scope and test plan: the testbed already produces the same calls with known timing and token counts, so it can serve as the test fixture. [to be written]
+From reading the source: the provider list covers hosted providers; the LLM-path list has no Ollama native `/api/chat`; the token fields do not include Ollama's `prompt_eval_count` and `eval_count`; and Ollama streams newline-delimited JSON rather than server-sent events. Ollama however claims an OpenAI compatible endpoint that hasn't been tested yet.
 
 ## 10. Discussion and threats to validity
 
 - **This is a prototype.** One machine, a single small model, twenty synthetic tickets per run, three agents, and a handful of fault types. Results from it show feasibility and fix a protocol; they are not evidence about production systems.
-- **The framework is unbuilt.** Section 7 is a design, and claims about it are hypotheses until §8 is filled in.
-- **Small samples.** Three baselines and one run per fault give a noise floor of about 0.4 s p95. In-window per-ticket numbers rest on 4–12 tickets. Multiple seeds and more baselines are needed.
 - **Inferred edges and FIFO.** Contention blame relies on FIFO service, which held across 100 overlapping pairs on this setup but is not guaranteed elsewhere.
-- **Fault realism.** Faults are synthetic. `cpu_hog` had no effect, and no shared-state fault exists yet.
 - **Observer faults.** Capture loss and truncation can break edges.
-- **Out-of-scope cells** of the promise matrix (§5.4) are stated, not hidden.
 - **Ground truth is ours.** The oracle shares code with the system under test; mistakes in the logger would be mistakes in the grading. The validator reduces but does not remove this risk.
+
+Besides these this proposed framework is very large and involves lots of moving parts and lots of assumptions, each of which must be justified. Given how fast research in this domain is moving work must be done quickly, and correctly. 
 
 ## 11. Future work
 
 - A real multi-host deployment.
-- Mixed agentic and classical workloads: hundreds of containers with very different characteristics, shared contention between them, one platform for both (supervisor's point; mentioned only).
-- A shared-state fault and other missing channels.
-- HTTP/2, gRPC, streaming and brokers; learned adaptive policies; acting on attributions; larger models; semantic edges.
-- Implementing the framework of §7 and filling §8.
+- Mixed agentic and classical workloads: hundreds of containers with very different characteristics, shared contention between them, one platform for both.
+- A shared-state fault and other missing channels and faults.
+- HTTP/2, gRPC, streaming and brokers and other tools (MCP); learned adaptive policies; semantic edges.
+- Implementing the framework and evaluating
 
 ## References
-
-Citations are by name in the text. Entries below were checked against their arXiv or venue pages (abstract level only; full-text claims are marked in the text). Full bibliographic details are still to be added.
 
 - **AgentSight**: Zheng, Hu, Yu, Quinn. *AgentSight: System-Level Observability for AI Agents Using eBPF.* arXiv 2508.02736.
 - **AgentLoupe**: *AgentLoupe: Kernel-Resident Semantic Causal Labels for AI Agent Observability.* arXiv 2610.23233.
@@ -493,22 +485,9 @@ Citations are by name in the text. Entries below were checked against their arXi
 
 ## Appendix
 
-- **A. Ground-truth schema.** Every event carries `run_id, role, pid, event, mono_ns, wall_ns`. Events: `proc_start`, `fault_start`/`fault_end`, `task_start`/`task_end`, `msg_send`/`msg_recv` (hash-joined), `llm_start`/`llm_end` (with Ollama timing fields and `ollama_queue_ms`), `tool_call`, `fault_effect`, `slo`. Full table in `testbed/README.md`.
-- **B. Fault parameters.** As in §6.4; scenario files are in `testbed/scenarios/`.
-- **C. Testbed specification and layout.** `testbed/README.md` (the earlier `AGENTS.md` specification is no longer in the repository).
 - **D. opencode failure transcripts.** `testbed/logs/wire.jsonl`.
-- **E. Filled promise matrix.** TBD, after §8.
 
 ---
-
-## RQ traceability (fill in before the defence)
-
-| RQ | Sections | Evidence |
-|---|---|---|
-| RQ1 (unit of observation) | 5.1, 7.4, 8.3 | decision span proposed (§5.1); ground truth lets spans be enumerated (§6.5). Reconstruction accuracy TBD |
-| RQ2 (causal record, delayed effects, overhead) | 7.3–7.5, 8.3, 8.4, 8.5, 8.7 | linking design; measured testbed effects and noise floor (§6.4, §6.6). Edge recovery, overhead and delayed-effect results TBD; no shared-state fault built yet |
-| RQ3 (telemetry co-designed with the consuming agent) | 2.7, 7.7, 7.8, 8.5–8.7 | design only, with the AI-observing-AI risks of §2.7. Measurements TBD |
-| RQ4 (replay and counterfactuals) | 5.3, 7.6, 8.4 | seeded paired runs and reproducibility check (§6.6) support an oracle. Live replay not built |
 
 [^1]: Khan, Fareed. *Agentic Architectures: A Library of 35 Production-Grade Agentic AI Patterns.*
 [^2]: https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro
