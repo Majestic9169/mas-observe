@@ -10,4 +10,4 @@ view: pdf
 clean: 
 	rm report.pdf
 
-.PHONY: pdf view clean
+.PHONY: view clean
