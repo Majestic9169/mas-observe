@@ -43,21 +43,27 @@ The objective is to design a framework that
 ### 1.3 Challenges to Classical Observability
 
 **Dynamic Call Graph**: A trace assumes a request flows through a known set of services. Here, the sequence of tool calls is chosen at run time by the agent and differs on every invocation. There is no fixed span tree to instrument.
+
 - the community has converged on auditing the actual system actions of an agent rather than trying to instrumenting the agentic application, which leads to the semantic gap that is bridged by AgentSight
 
 **Delayed and Cross-Process Effects**: When an SLO is violated, was it the UPF, or was it the agent's decision to scale down forty seconds earlier? Conventional traces cannot connect a decision to a delayed, indirect, infrastructure-level effect.
+
 - AgentLoupe attepts to solve this by assigning kernel labels to persistent files affected by agent decisions so ensure attribution in the future
 
 **Non-determinism** destroys baselining. Anomaly detection over trace shape or latency distribution assumes repeatable structure. Two correct runs may look nothing alike.
+
 - This makes ground-truth verification so important
 
 **Invisible Root Cause**: A regression caused by a changed prompt, a stale retrieved document, an ambiguous tool description, or a truncated context window is completely invisible in CPU, memory and packet counters
+
 - We must be able to localize the source of the error in such cases even if we can't explain the root cause
 
 **Silent failure**. An agent can take a plausible but wrong action while every conventional health signal stays green. There is no counterpart to "HTTP 500" for a bad decision.
+
 - In the event of an SLO violation we must be able to attribute the violation back to this bad decision
 
 **The observer effect**: Agents consume observability data as input. The telemetry pipeline is therefore inside the control loop: what we sample, how stale it is, and how we summarise it directly changes what the agent does. Classical observability assumes a passive human consumer looking at a dashboard. That assumption no longer holds
+
 - Increasingly people are turning towards an AI observes AI framework, and we can not ignore what we show the observer LLM and its own overhead
 
 ### 1.4 Current Research questions
@@ -76,16 +82,19 @@ How this report addresses them:
 ### 1.5 What Gap does this Fill
 
 **AgentSight**: correlates TLS-intercepted LLM traffic with kernel events using a real-time engine and a secondary observer LLM. 
+
 - Its demonstrations are weak case studies (prompt injection, reasoning loops, a multi-agent coordination bottleneck)
 - no ground truth verification
 - and the cost of the secondary LLM is unquantified
 
 **AgentLoupe**: motivated by the observation that AgentSight fails for delayed execution and cross-lineage behaviour. 
+
 - It keeps causal labels in kernel eBPF maps, which makes it per-host by construction. 
 - Its abstract reports some case studies (delayed cron-triggered reverse shell)
 - but no accuracy against ground truth.
 
 **llmmas-otel**: application-level OpenTelemetry instrumentation with a fault-injection layer
+
 - not eBPF, can't handle the delayed execution faults
 - and it needs access to the agent code.
 
@@ -105,29 +114,33 @@ Nobody specifies or measures what the observer LLM is shown, or adapts collectio
 
 ## 2. State of Agentic AI Research
 
-Placed here because it motivates the workload model before the observability background. *This section is a draft from the author's reading; each claim should be re-checked against its source before submission.*
-
 ### 2.1 Agent architectures and frameworks
 
-Agents are commonly built as a loop in which a model picks an action (a tool call or a final answer), the runtime executes it, and the result is fed back. Multi-agent systems compose such loops: planner/worker/critic, debate, and pipelines. Our testbed uses the first pattern, with a planner that retries a worker when a critic rejects its result (§6.1), because it produces fan-out, retries and shared-resource contention with very little code. We deliberately avoid agent frameworks so that all behaviour is visible on the wire.
+Agents are commonly built as a loop in which a model picks an action (a tool call or a final answer), the runtime executes it, and the result is fed back. Multi-agent systems compose such loops: planner/worker/critic, debate, and pipelines[^1]. Our prototype testbed uses the first pattern, with a planner that retries a worker when a critic rejects its result (§6.1), because it produces fan-out, retries and shared-resource contention with very little code. We deliberately avoid agentic applications (opencode/claudecode/openclaw) so that all behaviour is traceable and visible on the wire.
+
+![Agentic AI Application Diagram: from GeeksForGeeks](./assets/agentic-arch.png)
 
 ### 2.2 Communication and tool protocols
 
-MCP standardises how agents reach tools, and A2A how agents reach each other. Both run over HTTP, so what an external observer can see depends on TLS visibility, streaming, and connection reuse. [to verify: which transports each uses by default]. Our testbed uses plain JSON over HTTPS between agents (§6.2).
+MCP standardises how agents reach tools[^2], and A2A how agents reach each other[^3]. Both run over HTTP, so what an external observer can see depends on TLS visibility, streaming, and connection reuse. Our prototype testbed uses plain JSON over HTTPS between agents. 
+
+At the moment we assume access to very basic tools (1) file reading, (2) file writing, (3) and limited shell access.
 
 ### 2.3 Serving and runtime
 
 Agent workloads issue many dependent LLM calls to shared inference servers. Parrot (OSDI '24) argues that the unit to optimise is the LLM application, not the single request, and uses a "semantic variable" annotation to expose the data flow between requests. Autellix schedules at the level of the whole agent program, observing that head-of-line blocking at both the request and program level drives long waits, and reports 4–15× higher program throughput at equal latency than vLLM. Both systems get program-level context from the application or the client. An external observer has neither, which is why our design must recover it from the wire.
 
-A shared server is also a contention point: with one decode slot, requests queue, and one agent's burst delays another's calls without any message between them. This contention channel is central to our failure model, and Autellix's point implies that the order in which a server serves requests (FIFO or not) changes who gets blamed.
+A shared server is also a contention point: with one decode slot, requests queue, and one agent's burst delays another's calls without any message between them. This contention channel is important to our failure model, and Autellix's point implies that the order in which a server serves requests (FIFO or not) changes who gets blamed.
 
 ### 2.4 Failures and reliability of agent systems
 
-MAST (NeurIPS 2025) builds a taxonomy of 14 failure modes in three categories from 1,642 annotated execution traces across seven frameworks (annotator agreement Cohen's kappa 0.88), and argues that failures often stem from system design and inter-agent misalignment, not only from model limits. Who&When (ICML 2025) defines automated failure attribution, finding which agent and which step caused a failure, on logs from 127 multi-agent systems. Its best method reached 53.5% accuracy on the responsible agent but only 14.2% on the failing step, and some methods did worse than random. The low step-level figure motivates grading attribution against ground truth.
+*MAST* (NeurIPS 2025) builds a taxonomy of 14 failure modes in three categories from 1,642 annotated execution traces across seven frameworks, and argues that failures often stem from system design and inter-agent misalignment, not only from model limits. *Who&When* (ICML 2025) defines automated failure attribution, finding which agent and which step caused a failure, on logs from 127 multi-agent systems. Its best method reached 53.5% accuracy on the responsible agent but only 14.2% on the failing step, and some methods did worse than random. The low step-level figure motivates grading attribution against ground truth. It also requires needing to simplify the view presented to an overseeing LLM from just raw logs, simply adding a causal relation between decisions alone might make a significant change to this number.
 
 ### 2.5 Local and small models
 
-Small local models are cheaper and keep data on-premises, but tool calling is less reliable and context windows are limited. Our own data: a single-agent ticket classifier on `qwen2.5` with schema-constrained JSON actions classified 20 of 20 tickets correctly, while the same task through the off-the-shelf `opencode` harness succeeded in under 5% of attempts. The opencode requests we captured carry an 18,005-character system prompt plus 8,826 characters of tool schemas (about 6.7k tokens by the 4-characters-per-token rule), against a 16k-context model variant. That size alone does not explain the failure, since it fits in 16k tokens; a possible cause we have not confirmed is that Ollama's OpenAI-compatible endpoint ignored the larger context setting. We therefore use a minimal harness with schema-constrained output (§6.3).
+Small local models are cheaper and keep data on-premises, but tool calling is less reliable and context windows are limited. Our own data: a single-agent ticket classifier on `qwen2.5` with schema-constrained JSON actions classified 20 of 20 tickets correctly, while the same task through the off-the-shelf `opencode` harness succeeded in under 5% of attempts. The opencode requests we captured carry an 18,005-character system prompt plus 8,826 characters of tool schemas (about 6.7k tokens by the rule), against a 16k-context model variant. 
+
+That size alone does not explain the failure, since it fits within the context window; a possible cause could be that Ollama's OpenAI-compatible endpoint ignored the larger context setting. Unable to get opencode to work so far, we therefore use a minimal harness with schema-constrained output.
 
 ### 2.6 Agents in infrastructure operations
 
@@ -135,7 +148,7 @@ Network and cloud operations are adopting agents for triage, configuration and r
 
 ### 2.7 AI observing AI
 
-A visible trend in this literature is to use LLMs to observe, evaluate and explain other LLM systems. AgentSight uses a secondary LLM to correlate intercepted prompts with kernel events. MAST annotates traces at scale with an LLM-as-a-judge pipeline. Who&When asks LLMs to name the responsible agent and step. In cloud operations, LLM agents (RCAgent, and agents studied for root-cause analysis more generally) read logs, metrics and traces to propose root causes; RCAgent is hosted internally because incident data is sensitive.
+A visible trend in this literature is to use LLMs to observe, evaluate and explain other LLM systems. *AgentSight* uses a secondary LLM to bridge the semantic gap between an agents intent and its actions. *MAST* annotates traces at scale with an LLM-as-a-judge pipeline. *Who&When* asks LLMs to name the responsible agent and step. In cloud operations, LLM agents (RCAgent, and agents studied for root-cause analysis more generally) read logs, metrics and traces to propose root causes; RCAgent is hosted internally because incident data is sensitive.
 
 **What it solves.**
 
@@ -147,14 +160,27 @@ A visible trend in this literature is to use LLMs to observe, evaluate and expla
 **What it costs.**
 
 - *The observer is itself unreliable.* The same results that motivate the approach show how weak it is: step-level attribution of 14.2% on Who&When, and, in cloud RCA, reported problems with randomness and hallucinated actions (the Flow-of-Action work adds a judge agent for this). An observer that is wrong with confidence is worse than none.
-- *It consumes the resource it observes.* On a shared inference server, the observer's own calls queue behind, and in front of, the agents' calls. Its load changes the SLOs it is meant to explain (an observer effect), and its tokens are an overhead that neither AgentSight nor AgentLoupe reports.
-- *Context limits.* A small model cannot read raw event streams, which is why §7.8 selects a subgraph.
+- *It consumes the resource it observes.* On a shared inference server, the observer's own calls queue behind, and in front of, the agents' calls. Its load changes the SLOs it is meant to explain (an observer effect), and its tokens are an overhead that no paper quantifies so far.
+- *Context limits.* A small model cannot read long raw event streams, which is why selects a subgraph.
 - *Untrusted input.* Captured prompts and tool outputs are attacker-influenced text. Feeding them to the observer exposes it to prompt injection from the very system it audits.
 - *Shared blind spots.* An observer from the same model family may fail in the same way as the agents it watches.
 - *Privacy.* TLS plaintext capture exposes prompts and data, which argues for a local observer.
 - *Grading.* Without ground truth, "the observer found the cause" cannot be checked, and the observer's output may only look plausible.
 
-**Our stance.** Build the graph deterministically (hash matching, process lineage, queue position) and let the LLM only rank and explain on a bounded subgraph; run it on a local small model off the real-time path; count its tokens and queue load as overhead; treat captured text as untrusted data; and grade its conclusions against the testbed's fault-tagged ground truth. This is what makes the observer's answers testable, and it frames RQ3.
+**Our Proposition**: Build the graph deterministically (hash matching, process lineage, queue position) and let the LLM only rank and explain on a bounded subgraph; run it on a local small model off the real-time path; count its tokens and queue load as overhead; treat captured text as untrusted data; and grade its conclusions against the testbed's fault-tagged ground truth. This is what makes the observer's answers testable, and it frames RQ3.
+
+### 2.8 Operating-system support for agents
+
+A parallel line of work asks what the operating system itself should offer agents. Several of these authors also worked on AgentSight. Most of it concerns control, isolation and interfaces, not observation, but the papers below bear on our research questions. I initially spent time on these papers before our domain shifted to observability.
+
+- **AgentCgroup** characterises the OS resource use of sandboxed coding agents over 144 software-engineering tasks, then controls it with an intent-driven eBPF resource controller that creates an ephemeral child cgroup for each tool call. Enforcement is in the kernel, and the preliminary evaluation reports 29% lower high-priority p95 latency under multi-tenant memory contention. *Relevance:* it makes the **tool call** the boundary at which resources are accounted, which supports our choice of a decision span (RQ1) and gives a natural place to attribute resource effects (RQ2).
+- **Fork, Explore, Commit** introduces the *branch context*: a copy-on-write filesystem view plus a process group with a fork, explore and commit-or-abort lifecycle (BranchFS, and a proposed `branch()` syscall; branch creation under 350 μs). *Relevance:* isolated, rollback-able state is the mechanism one would need to **replay a decision from the same state and try a different action** (RQ4). Our seeded reruns achieve this at whole-run granularity; branching would do it per decision inside a live system.
+- **AgentPProf** argues that agent observability needs *profiling*, not only per-run debugging: it aggregates trajectories into pprof-compatible profiles using "operation stacks" and recursive segmentation at task boundaries. It names a problem we share: agent activity lacks stable identifiers to aggregate on. *Relevance:* it is cross-run and cost-oriented, where our work is per-incident and causal; the two are complementary, and its identity problem is RQ1/RQ2.
+- **When Agent Context Goes Stale** shows that an agent keeps a tool observation (for example a file's contents) in context after another agent, a user or a tool has changed the source, and then reasons from outdated facts. Its framework, Concord, links each observation to its source and detects changes. *Relevance:* this is exactly our **shared-state and delayed channel**: the cause (a write by one agent) and the symptom (a wrong decision by another) are separated in time and have no message between them.
+- **Towards Agentic Performance Management** proposes performance interfaces that answer *counterfactual queries* ("my SLO is violated; which reallocation would restore it?") using queueing models, learned predictors and approximate simulators. *Relevance:* it is the model-based version of the counterfactual claim we deliberately postponed in §5.3, where we use reruns as an oracle and not an estimate; it also takes SLO violation as the entry point, as we do.
+- **Grimlock** uses the same vantage point, eBPF interception of agent-to-agent TLS traffic, to *enforce* identity and scope on delegation, showing that this position suits control as well as observation. 
+
+None of these provides a causal record across agents or a ground-truth evaluation of attribution, so they strengthen the case for RQ2 and RQ4 without covering them.
 
 ## 3. Background: observability in distributed systems
 
@@ -209,6 +235,8 @@ Columns follow §1.3. Entries marked "?" need verification against each paper.
 | **This work (proposed)** | yes | yes | emulated | yes (testbed) | time and tokens (planned) | yes | yes (design target) |
 
 Note: earlier work predates AgentSight and is lower impact.
+
+**Relation to the AgentSight line of work.** Several of the OS-for-agents papers of §2.8 share authors with AgentSight (AgentCgroup, the branch context and AgentPProf), and AgentPProf is released in the AgentSight repository, so they are best read as one research programme extending AgentSight towards resource control, state isolation and cross-run profiling. Our work builds on AgentSight's boundary-tracing vantage point but extends it along a different axis: causal attribution across agents and shared resources, graded against a ground-truth log that the existing papers lack.
 
 ## 5. Failure model and causal framework
 
@@ -457,6 +485,13 @@ Citations are by name in the text. Entries below were checked against their arXi
 - **Parrot**: Lin et al. *Parrot: Efficient Serving of LLM-Based Applications with Semantic Variable.* OSDI 2024.
 - **DeepFlow**: Shen et al. *Network-Centric Distributed Tracing with DeepFlow: Troubleshooting Your Microservices in Zero Code.* SIGCOMM 2023.
 - **LLM agents for RCA**: *RCAgent: Cloud Root Cause Analysis by Autonomous Agents with Tool-Augmented Large Language Models.* arXiv 2310.16340; *Exploring LLM-based Agents for Root Cause Analysis.* arXiv 2403.04123.
+- **AgentCgroup**: Zheng, Fan, Fu, Yang, Zhang, Quinn. *AgentCgroup: Understanding and Controlling OS Resources of AI Agents.* arXiv 2602.09345 (AgenticOS 2026 at ASPLOS).
+- **Branch context**: Wang, Zheng. *Fork, Explore, Commit: OS Primitives for Agentic Exploration.* arXiv 2602.08199 (AgenticOS 2026 at ASPLOS).
+- **DMI**: Wang, Li, Chen. *Rethinking OS Interfaces for LLM Agents.* AgenticOS 2026 at ASPLOS.
+- **AgentPProf**: Zheng et al. *AgentPProf: Semantic Profiler for AI Agents.* 2nd AgenticOS workshop, SOSP 2026. (The workshop schedule lists it as "AgentProf".)
+- **Concord**: Liu, Fang, Qian. *When Agent Context Goes Stale: Incoherence in Volatile Agent Context.* 2nd AgenticOS workshop, SOSP 2026.
+- **Agentic performance management**: Chen, Huang, Levy. *Towards Agentic Performance Management* (extended abstract). AgenticOS 2026 at ASPLOS.
+- **Grimlock**: Wu et al. *Grimlock: Guarding High-Agency Systems with eBPF and Attested Channels.* AgenticOS 2026 at ASPLOS. 
 - **Not yet checked**: Dapper; Lamport (happened-before); MCP; A2A; the causal-inference RCA benchmark study; Flow-of-Action (cited from a search summary only).
 
 ## Appendix
@@ -477,3 +512,7 @@ Citations are by name in the text. Entries below were checked against their arXi
 | RQ2 (causal record, delayed effects, overhead) | 7.3–7.5, 8.3, 8.4, 8.5, 8.7 | linking design; measured testbed effects and noise floor (§6.4, §6.6). Edge recovery, overhead and delayed-effect results TBD; no shared-state fault built yet |
 | RQ3 (telemetry co-designed with the consuming agent) | 2.7, 7.7, 7.8, 8.5–8.7 | design only, with the AI-observing-AI risks of §2.7. Measurements TBD |
 | RQ4 (replay and counterfactuals) | 5.3, 7.6, 8.4 | seeded paired runs and reproducibility check (§6.6) support an oracle. Live replay not built |
+
+[^1]: Khan, Fareed. *Agentic Architectures: A Library of 35 Production-Grade Agentic AI Patterns.*
+[^2]: https://modelcontextprotocol.io/docs/2026-07-28/getting-started/intro
+[^3]: https://tyk.io/learning-center/a2a-protocol-architecture-and-technical-specification/
