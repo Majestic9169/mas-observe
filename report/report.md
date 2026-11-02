@@ -24,7 +24,7 @@ LLM-based agents increasingly operate as teams, in which planners, workers and c
 
 Telecom operators are increasingly moving to offering **computing-on-demand** services: network functions and applications run as microservices over shared, geo-distributed infrastructure spanning cell sites, edge clusters, regional data centers, and the core cloud. With this increase in scale they are also looking to place agentic AI in important control loops across this infrastructure.
 
-Millions of people depend on the reliability of these operations, so operators must be able to monitor, and bring reliability to, inherently non-deterministic agentic workflows. This calls for an observability framework capable of detecting, localizing, and explaining failures that arise in large, distributed, multi-agent systems.
+Millions of people depend on the reliability of these operations, so operators must be able to monitor, and bring reliability to, inherently non-deterministic agentic workflows. This calls for an observability framework capable of detecting, localizing, and explaining failures that arise in large, distributed, multi-agent systems (MAS).
 
 Using agents in systems of such importance also introduces new costs that must be managed: token limits, context-window sizes, the latency inherent to LLM calls, and more. A single task often needs many LLM calls, so cost and energy matter, which argues for local or small models. Current research is still establishing the costs and faults of such systems.
 
@@ -471,29 +471,52 @@ All the actual content, the research questions, numbers, related work, core prop
 
 ## References
 
-- **AgentLoupe**: *AgentLoupe: Kernel-Resident Semantic Causal Labels for AI Agent Observability.* arXiv 2610.23233.
-- **AgentPProf**: Zheng et al. *AgentPProf: Semantic Profiler for AI Agents.* 2nd AgenticOS workshop, SOSP 2026. (The workshop schedule lists it as "AgentProf".)
-- **Concord**: Liu, Fang, Qian. *When Agent Context Goes Stale: Incoherence in Volatile Agent Context.* 2nd AgenticOS workshop, SOSP 2026.
-- **llmmas-otel**: *Observability and Fault Injection for LLM-Based Multi-Agent Systems in Software Engineering.* arXiv 2608.24271.
-- **DMI**: Wang, Li, Chen. *Rethinking OS Interfaces for LLM Agents.* AgenticOS 2026 at ASPLOS.
-- **Agentic performance management**: Chen, Huang, Levy. *Towards Agentic Performance Management* (extended abstract). AgenticOS 2026 at ASPLOS.
-- **Grimlock**: Wu et al. *Grimlock: Guarding High-Agency Systems with eBPF and Attested Channels.* AgenticOS 2026 at ASPLOS. 
-- **AgentCgroup**: Zheng, Fan, Fu, Yang, Zhang, Quinn. *AgentCgroup: Understanding and Controlling OS Resources of AI Agents.* arXiv 2602.09345 (AgenticOS 2026 at ASPLOS).
-- **Branch context**: Wang, Zheng. *Fork, Explore, Commit: OS Primitives for Agentic Exploration.* arXiv 2602.08199 (AgenticOS 2026 at ASPLOS).
-- **AgentSight**: Zheng, Hu, Yu, Quinn. *AgentSight: System-Level Observability for AI Agents Using eBPF.* arXiv 2508.02736.
-- **Who&When**: *Which Agent Causes Task Failures and When? On Automated Failure Attribution of LLM Multi-Agent Systems.* ICML 2025, arXiv 2505.00212.
-- **A2A**: *Agent2Agent (A2A) Protocol*, originally developed by Google and donated to the Linux Foundation (the project site now reports a move to the Agentic AI Foundation). https://a2a-protocol.org/latest/
-- **MAST**: *Why Do Multi-Agent LLM Systems Fail?* NeurIPS 2025, arXiv 2503.13657.
-- **Autellix**: Luo et al. *Autellix: An Efficient Serving Engine for LLM Agents as General Programs.* arXiv 2502.13965.
-- **Flow-of-Action**: Pei, Wang et al. *Flow-of-Action: SOP Enhanced LLM-Based Multi-Agent System for Root Cause Analysis.* arXiv 2502.08224. 
-- **MCP**: Model Context Protocol, open-source specification and documentation. https://modelcontextprotocol.io/
-- **Causal RCA study**: Pham, Ha, Zhang. *Root Cause Analysis for Microservice System based on Causal Inference: How Far Are We?* ASE 2024, arXiv 2408.13729. 
-- **Parrot**: Lin et al. *Parrot: Efficient Serving of LLM-Based Applications with Semantic Variable.* OSDI 2024.
-- **LLM agents for RCA**: *RCAgent: Cloud Root Cause Analysis by Autonomous Agents with Tool-Augmented Large Language Models.* arXiv 2310.16340; *Exploring LLM-based Agents for Root Cause Analysis.* arXiv 2403.04123.
-- **DeepFlow**: Shen et al. *Network-Centric Distributed Tracing with DeepFlow: Troubleshooting Your Microservices in Zero Code.* SIGCOMM 2023.
-- **Hindsight**: Zhang et al. *The Benefit of Hindsight: Tracing Edge-Cases in Distributed Systems.* NSDI 2023, arXiv 2202.05769.
-- **Dapper**: Sigelman et al. *Dapper, a Large-Scale Distributed Systems Tracing Infrastructure.* Google Technical Report, 2010
-- **Lamport**: Lamport. *Time, Clocks, and the Ordering of Events in a Distributed System.* Communications of the ACM 21(7):558-565, 1978
+\[1\] **AgentLoupe**: *AgentLoupe: Kernel-Resident Semantic Causal Labels for AI Agent Observability.* arXiv 2610.23233.
+
+\[2\] **AgentPProf**: Zheng et al. *AgentPProf: Semantic Profiler for AI Agents.* 2nd AgenticOS workshop, SOSP 2026. (The workshop schedule lists it as "AgentProf".)
+
+\[3\] **Concord**: Liu, Fang, Qian. *When Agent Context Goes Stale: Incoherence in Volatile Agent Context.* 2nd AgenticOS workshop, SOSP 2026.
+
+\[4\] **llmmas-otel**: *Observability and Fault Injection for LLM-Based Multi-Agent Systems in Software Engineering.* arXiv 2608.24271.
+
+\[5\] **DMI**: Wang, Li, Chen. *Rethinking OS Interfaces for LLM Agents.* AgenticOS 2026 at ASPLOS.
+
+\[6\] **Agentic performance management**: Chen, Huang, Levy. *Towards Agentic Performance Management* (extended abstract). AgenticOS 2026 at ASPLOS.
+
+\[7\] **Grimlock**: Wu et al. *Grimlock: Guarding High-Agency Systems with eBPF and Attested Channels.* AgenticOS 2026 at ASPLOS. 
+
+\[8\] **AgentCgroup**: Zheng, Fan, Fu, Yang, Zhang, Quinn. *AgentCgroup: Understanding and Controlling OS Resources of AI Agents.* arXiv 2602.09345 (AgenticOS 2026 at ASPLOS).
+
+\[9\] **Branch context**: Wang, Zheng. *Fork, Explore, Commit: OS Primitives for Agentic Exploration.* arXiv 2602.08199 (AgenticOS 2026 at ASPLOS).
+
+\[10\] **AgentSight**: Zheng, Hu, Yu, Quinn. *AgentSight: System-Level Observability for AI Agents Using eBPF.* arXiv 2508.02736.
+
+\[11\] **Who&When**: *Which Agent Causes Task Failures and When? On Automated Failure Attribution of LLM Multi-Agent Systems.* ICML 2025, arXiv 2505.00212.
+
+\[12\] **A2A**: *Agent2Agent (A2A) Protocol*, originally developed by Google and donated to the Linux Foundation (the project site now reports a move to the Agentic AI Foundation). https://a2a-protocol.org/latest/
+
+\[13\] **MAST**: *Why Do Multi-Agent LLM Systems Fail?* NeurIPS 2025, arXiv 2503.13657.
+
+\[14\] **Autellix**: Luo et al. *Autellix: An Efficient Serving Engine for LLM Agents as General Programs.* arXiv 2502.13965.
+
+\[15\] **Flow-of-Action**: Pei, Wang et al. *Flow-of-Action: SOP Enhanced LLM-Based Multi-Agent System for Root Cause Analysis.* arXiv 2502.08224. 
+
+\[16\] **MCP**: Model Context Protocol, open-source specification and documentation. https://modelcontextprotocol.io/
+
+\[17\] **Causal RCA study**: Pham, Ha, Zhang. *Root Cause Analysis for Microservice System based on Causal Inference: How Far Are We?* ASE 2024, arXiv 2408.13729. 
+
+\[18\] **Parrot**: Lin et al. *Parrot: Efficient Serving of LLM-Based Applications with Semantic Variable.* OSDI 2024.
+
+\[19\] **LLM agents for RCA**: *RCAgent: Cloud Root Cause Analysis by Autonomous Agents with Tool-Augmented Large Language Models.* arXiv 2310.16340; *Exploring LLM-based Agents for Root Cause Analysis.* arXiv 2403.04123.
+
+\[20\] **DeepFlow**: Shen et al. *Network-Centric Distributed Tracing with DeepFlow: Troubleshooting Your Microservices in Zero Code.* SIGCOMM 2023.
+
+\[21\] **Hindsight**: Zhang et al. *The Benefit of Hindsight: Tracing Edge-Cases in Distributed Systems.* NSDI 2023, arXiv 2202.05769.
+
+\[22\] **Dapper**: Sigelman et al. *Dapper, a Large-Scale Distributed Systems Tracing Infrastructure.* Google Technical Report, 2010
+
+\[23\] **Lamport**: Lamport. *Time, Clocks, and the Ordering of Events in a Distributed System.* Communications of the ACM 21(7):558-565, 1978
+
 
 ## Appendix
 
