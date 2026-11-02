@@ -38,7 +38,7 @@ The objective is to design a framework that
 1. collects eBPF telemetry adaptively, so that cost stays low until an SLO is at risk, and 
 1. verifies outcomes, that is, checks that what an agent claims to have done is what happened.
 
-**NOTE**: We currently only focus on observing the agentic workload. A typical computing-on-demand platform is also going to have many containers running conventional workloads that must also be observed alongside in this system. 
+We currently only focus on observing the agentic workload. A typical computing-on-demand platform is also going to have many containers running conventional workloads that must also be observed alongside in this system. 
 
 ### 1.3 Challenges to Classical Observability
 
@@ -204,35 +204,19 @@ Head sampling decides up front, tail sampling decides after the trace completes,
 
 ### 4.1 AgentSight
 
-AgentSight (arXiv 2508.02736) introduces *boundary tracing*: it watches agents from outside their code, at stable system interfaces, with eBPF. It intercepts TLS-encrypted LLM traffic to recover intent, monitors kernel events for system-wide effects, and correlates the two across process boundaries with a real-time engine and a secondary LLM. It works on closed-source CLI agents without an SDK or proxy. It demonstrates prompt-injection detection, resource-wasting reasoning loops and a coordination bottleneck in a multi-agent system, and reports under 3% overhead. From the full text (the abstract does not say): correlation uses process lineage, temporal proximity and argument matching, with a 100–500 ms window that is not justified; there is no ground truth; the multi-agent evidence is one qualitative session; and overhead is reported from three runs as a mean. [author's reading of the full paper; to re-verify]
+**AgentSight** introduces *boundary tracing*: it watches agents from outside their code, at stable system interfaces, with eBPF. It intercepts TLS-encrypted LLM traffic to recover intent, monitors kernel events for system-wide effects, and correlates the two across process boundaries with a real-time engine and a secondary LLM. It works on closed-source CLI agents without an SDK or proxy. It demonstrates prompt-injection detection, resource-wasting reasoning loops and a coordination bottleneck in a multi-agent system, and reports under 3% overhead. Correlation uses process lineage, temporal proximity and argument matching, with an arbitrary 100–500 ms window; there is no ground truth.
 
 ### 4.2 AgentLoupe
 
-AgentLoupe (arXiv 2610.23233) targets what AgentSight misses: delayed execution and behaviour that crosses process lineages. It captures TLS plaintext to interpret LLM interactions, gives each a *kernel-resident semantic label* kept in eBPF maps, and propagates the label across processes and threads and onto kernel resources such as files and sockets, so that a persistent resource carries the context to an unrelated process later. It reports average overhead below 8% and case studies tracing cross-lineage persistent attacks to their originating LLM interactions. The abstract reports no accuracy against ground truth. [to verify in the full text: single-host scope, how it decides that a prompt is new, and label scoping]
+**AgentLoupe** targets what AgentSight misses: delayed execution and behaviour that crosses process lineages. It captures TLS plaintext to interpret LLM interactions, gives each a *kernel-resident semantic label* kept in eBPF maps, and propagates the label across processes and threads and onto kernel resources such as files and sockets, so that a persistent resource carries the context to an unrelated process later. It reports average overhead below 8% and case studies tracing cross-lineage persistent attacks to their originating LLM interactions. The abstract reports no accuracy against ground truth. 
 
 ### 4.3 llmmas-otel
 
-llmmas-otel (arXiv 2608.24271) is a lightweight, framework-agnostic tool for inspecting and testing LLM-based multi-agent systems in software engineering. An OpenTelemetry observability layer records phases, agent steps, inter-agent messages, tool calls and LLM invocations. A fault-injection layer applies targeted faults at those interaction points, tags the affected spans (for example `llmmas.fault.injected` and a fault type such as an agent-to-agent delay), and compares baseline and faulty runs through aligned traces. It is validated initially on a minimal demo workflow and on one real multi-agent system for software development. It requires application-level instrumentation. Its fault-tagging idea is close to our `fault_id` ground truth; the difference is that ours is a side channel hidden from the observer, and our faults include resource contention. [fault list: to verify in the full text]
+**llmmas-otel** is a lightweight, framework-agnostic tool for inspecting and testing LLM-based multi-agent systems in software engineering. An OpenTelemetry observability layer records phases, agent steps, inter-agent messages, tool calls and LLM invocations. A fault-injection layer applies targeted faults at those interaction points, tags the affected spans (for example `llmmas.fault.injected` and a fault type such as an agent-to-agent delay), and compares baseline and faulty runs through aligned traces. It is validated initially on a minimal demo workflow and on one real multi-agent system for software development. It requires application-level instrumentation. Its fault-tagging idea is close to our `fault_id` ground truth; the difference is that ours is a side channel hidden from the observer.
 
 ### 4.4 Failure attribution from logs
 
-Who&When and MAST attribute failures from logs and transcripts after the fact, using human annotation and LLM judges. They do not observe from outside the agents and do not use infrastructure signals.
-
-### 4.5 Comparison table and positioning
-
-Columns follow §1.3. Entries marked "?" need verification against each paper.
-
-| system | zero-instrumentation | multi-agent | cross-host | ground truth | overhead measured | adaptive | local-model support |
-|---|---|---|---|---|---|---|---|
-| AgentSight | yes | one session | no | no | time (under 3%) | no | ? |
-| AgentLoupe | yes | cross-process, same host | no (kernel labels) | no | time (under 8%) | no | ? |
-| llmmas-otel | no (OpenTelemetry) | yes | ? | partly (injected faults tagged) | ? | no | ? |
-| Who&When / MAST | n/a (post hoc) | yes | n/a | annotated | n/a | n/a | n/a |
-| **This work (proposed)** | yes | yes | emulated | yes (testbed) | time and tokens (planned) | yes | yes (design target) |
-
-Note: earlier work predates AgentSight and is lower impact.
-
-**Relation to the AgentSight line of work.** Several of the OS-for-agents papers of §2.8 share authors with AgentSight (AgentCgroup, the branch context and AgentPProf), and AgentPProf is released in the AgentSight repository, so they are best read as one research programme extending AgentSight towards resource control, state isolation and cross-run profiling. Our work builds on AgentSight's boundary-tracing vantage point but extends it along a different axis: causal attribution across agents and shared resources, graded against a ground-truth log that the existing papers lack.
+**Who&When** and **MAST** attribute failures from logs and transcripts after the fact, using human annotation and LLM judges. They do not observe from outside the agents and do not use infrastructure signals.
 
 ## 5. Failure model and causal framework
 
